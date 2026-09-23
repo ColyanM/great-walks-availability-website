@@ -5,12 +5,19 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.PostMapping;
 
 @RestController
 public class Controller {
+
+    private final AlertRepository alertRepository;
+
+public Controller(AlertRepository alertRepository) {
+    this.alertRepository = alertRepository;
+}
 
 	@GetMapping("/api/health")
 	public HealthResponse health() {
@@ -27,7 +34,8 @@ public List<WalksResponse> walks() {
 }
 
 @PostMapping("/api/alerts")
-public AlertRequest receiveAlert(@Valid @RequestBody AlertRequest request) {
+@ResponseStatus(HttpStatus.CREATED)
+public AlertResponse receiveAlert(@Valid @RequestBody AlertRequest request) {
     boolean walkExists = walks().stream()
         .anyMatch(walk -> walk.id() == request.walkId());
 
@@ -38,6 +46,19 @@ public AlertRequest receiveAlert(@Valid @RequestBody AlertRequest request) {
         );
     }
 
-    return request;
+    Alert alert = new Alert(
+        request.walkId(),
+        request.startDate(),
+        request.partySize()
+    );
+
+    Alert savedAlert = alertRepository.save(alert);
+
+    return new AlertResponse(
+        savedAlert.getId(),
+        savedAlert.getWalkId(),
+        savedAlert.getStartDate(),
+        savedAlert.getPartySize()
+    );
 }
 }

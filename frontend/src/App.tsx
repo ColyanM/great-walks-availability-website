@@ -9,6 +9,13 @@ type Walk = {
   name: string
 }
 
+type AlertResponse = {
+  id: number
+  walkId: number
+  startDate: string
+  partySize: number
+}
+
 function App() {
   const title = 'New Zealand Great Walk Alerts Service'
   const [status, setStatus] = useState('Not checked')
@@ -103,8 +110,7 @@ function App() {
     }
 
     setIsSubmitting(true)
-    setFormMessage('Checking your details with the backend...')
-
+    setFormMessage('Saving your alert...')
     try {
       const response = await fetch('/api/alerts', {
         method: 'POST',
@@ -127,11 +133,10 @@ function App() {
         throw new Error('Alert request failed')
       }
 
-      setFormMessage(
-        'Your details passed the backend checks. Nothing has been saved yet.'
-      )
+      const savedAlert: AlertResponse = await response.json()
+      setFormMessage(`Alert #${savedAlert.id} saved.`)
     } catch {
-      setFormMessage('Could not check your details. Please try again.')
+      setFormMessage('Could not confirm whether the alert was saved.')
     } finally {
       setIsSubmitting(false)
     }
@@ -190,7 +195,7 @@ function App() {
           />
         </div>
         <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Checking...' : 'Check alert details'}
+          {isSubmitting ? 'Saving...' : 'Save alert'}
         </button>          <p role="status">{formMessage}</p>
       </form>
 
