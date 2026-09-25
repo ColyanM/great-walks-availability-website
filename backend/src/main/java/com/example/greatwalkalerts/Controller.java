@@ -9,14 +9,19 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.data.domain.Sort;
 
 @RestController
 public class Controller {
 
-    private final AlertRepository alertRepository;
+private final AlertRepository alertRepository;
+private final WalkRepository walkRepository;
 
-public Controller(AlertRepository alertRepository) {
+public Controller(
+    AlertRepository alertRepository,
+    WalkRepository walkRepository) {
     this.alertRepository = alertRepository;
+    this.walkRepository = walkRepository;
 }
 
 	@GetMapping("/api/health")
@@ -24,20 +29,34 @@ public Controller(AlertRepository alertRepository) {
 		return new HealthResponse("OK");
 	}
 
-	@GetMapping("/api/walks")
+@GetMapping("/api/walks")
 public List<WalksResponse> walks() {
-    return List.of(
-        new WalksResponse(1, "Kepler Track"),
-        new WalksResponse(2, "Milford Track"),
-        new WalksResponse(3, "Routeburn Track")
-    );
+    return walkRepository.findAll(Sort.by("id"))
+        .stream()
+        .map(walk -> new WalksResponse(
+            walk.getId(),
+            walk.getName()
+        ))
+        .toList();
+}
+
+@GetMapping("/api/alerts")
+public List<AlertResponse> alerts() {
+    return alertRepository.findAll(Sort.by("id").descending())
+        .stream()
+        .map(alert -> new AlertResponse(
+            alert.getId(),
+            alert.getWalkId(),
+            alert.getStartDate(),
+            alert.getPartySize()
+        ))
+        .toList();
 }
 
 @PostMapping("/api/alerts")
 @ResponseStatus(HttpStatus.CREATED)
 public AlertResponse receiveAlert(@Valid @RequestBody AlertRequest request) {
-    boolean walkExists = walks().stream()
-        .anyMatch(walk -> walk.id() == request.walkId());
+    boolean walkExists = walkRepository.existsById(request.walkId());
 
     if (!walkExists) {
         throw new ResponseStatusException(

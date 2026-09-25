@@ -1,19 +1,10 @@
 import './App.css'
+import type { AlertResponse, Walk } from './types'
 import { useEffect, useState } from 'react'
+import SavedAlerts from './SavedAlerts'
+
 type HealthResponse = {
   status: string
-}
-
-type Walk = {
-  id: number
-  name: string
-}
-
-type AlertResponse = {
-  id: number
-  walkId: number
-  startDate: string
-  partySize: number
 }
 
 function App() {
@@ -26,6 +17,7 @@ function App() {
   const [partySize, setPartySize] = useState('1')
   const [formMessage, setFormMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [alertsVersion, setAlertsVersion] = useState(0)
 
   async function handleCheck() {
     setStatus('Checking...')
@@ -135,6 +127,7 @@ function App() {
 
       const savedAlert: AlertResponse = await response.json()
       setFormMessage(`Alert #${savedAlert.id} saved.`)
+      setAlertsVersion((previous) => previous + 1)
     } catch {
       setFormMessage('Could not confirm whether the alert was saved.')
     } finally {
@@ -198,7 +191,7 @@ function App() {
           {isSubmitting ? 'Saving...' : 'Save alert'}
         </button>          <p role="status">{formMessage}</p>
       </form>
-
+      <SavedAlerts walks={walks} refreshVersion={alertsVersion} />
       <p>{walksMessage}</p>
       <p>Status: {status}</p>
       <button type="button" onClick={handleCheck}>
