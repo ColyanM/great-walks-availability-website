@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.data.domain.Sort;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 public class Controller {
@@ -79,5 +81,17 @@ public AlertResponse receiveAlert(@Valid @RequestBody AlertRequest request) {
         savedAlert.getStartDate(),
         savedAlert.getPartySize()
     );
+}
+
+@DeleteMapping("/api/alerts/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public void deleteAlert(@PathVariable int id) {
+    Alert alert = alertRepository.findById(id)
+        .orElseThrow(() -> new ResponseStatusException(
+            HttpStatus.NOT_FOUND,
+            "Alert not found."
+        ));
+
+    alertRepository.delete(alert);
 }
 }

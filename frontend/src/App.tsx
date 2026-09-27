@@ -191,7 +191,11 @@ function App() {
           {isSubmitting ? 'Saving...' : 'Save alert'}
         </button>          <p role="status">{formMessage}</p>
       </form>
-      <SavedAlerts walks={walks} refreshVersion={alertsVersion} />
+      <SavedAlerts
+        walks={walks}
+        refreshVersion={alertsVersion}
+        onDeleted={() => setAlertsVersion((previous) => previous + 1)}
+      />
       <p>{walksMessage}</p>
       <p>Status: {status}</p>
       <button type="button" onClick={handleCheck}>

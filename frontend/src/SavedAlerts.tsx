@@ -4,14 +4,45 @@ import type { AlertResponse, Walk } from './types'
 type SavedAlertsProps = {
     walks: Walk[]
     refreshVersion: number
+    onDeleted: () => void
 }
 
 export default function SavedAlerts({
     walks,
     refreshVersion,
+    onDeleted,
 }: SavedAlertsProps) {
     const [alerts, setAlerts] = useState<AlertResponse[] | null>(null)
     const [error, setError] = useState('')
+    const [deletingId, setDeletingId] = useState<number | null>(null)
+    const [deleteError, setDeleteError] = useState('')
+
+    async function handleDelete(id: number) {
+        if (deletingId !== null) {
+            return
+        }
+
+        setDeletingId(id)
+        setDeleteError('')
+
+        try {
+            const response = await fetch(`/api/alerts/${id}`, {
+                method: 'DELETE',
+            })
+
+            if (!response.ok && response.status !== 404) {
+                throw new Error('Could not delete alert')
+            }
+
+            onDeleted()
+        } catch {
+            setDeleteError(
+                'Could not confirm deletion. Refresh the page to check.'
+            )
+        } finally {
+            setDeletingId(null)
+        }
+    }
 
     useEffect(() => {
         let ignore = false
@@ -47,6 +78,7 @@ export default function SavedAlerts({
     return (
         <section>
             <h2>Saved alerts</h2>
+            {deleteError && <p role="alert">{deleteError}</p>}
 
             {error ? (
                 <p role="alert">{error}</p>
@@ -64,7 +96,15 @@ export default function SavedAlerts({
                                 {walk?.name ?? `Walk #${alert.walkId}`} — {alert.startDate}
                                 {' — '}
                                 {alert.partySize} {alert.partySize === 1 ? 'person' : 'people'}
+                                <button
+                                    type="button"
+                                    disabled={deletingId !== null}
+                                    onClick={() => handleDelete(alert.id)}
+                                >
+                                    {deletingId === alert.id ? 'Deleting...' : 'Delete'}
+                                </button>
                             </li>
+
                         )
                     })}
                 </ul>
