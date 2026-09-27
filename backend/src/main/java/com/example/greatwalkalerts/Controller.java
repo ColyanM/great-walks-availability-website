@@ -18,13 +18,18 @@ public class Controller {
 
 private final AlertRepository alertRepository;
 private final WalkRepository walkRepository;
+private final FacilityRepository facilityRepository;
 
 public Controller(
     AlertRepository alertRepository,
-    WalkRepository walkRepository) {
+    WalkRepository walkRepository,
+    FacilityRepository facilityRepository
+) {
     this.alertRepository = alertRepository;
     this.walkRepository = walkRepository;
+    this.facilityRepository = facilityRepository;
 }
+
 
 	@GetMapping("/api/health")
 	public HealthResponse health() {
@@ -93,5 +98,24 @@ public void deleteAlert(@PathVariable int id) {
         ));
 
     alertRepository.delete(alert);
+}
+
+@GetMapping("/api/walks/{walkId}/facilities")
+public List<FacilityResponse> facilities(@PathVariable int walkId) {
+    if (!walkRepository.existsById(walkId)) {
+        throw new ResponseStatusException(
+            HttpStatus.NOT_FOUND,
+            "Walk not found."
+        );
+    }
+
+    return facilityRepository.findByWalk_IdOrderByIdAsc(walkId)
+        .stream()
+        .map(facility -> new FacilityResponse(
+            facility.getId(),
+            facility.getName(),
+            facility.getFacilityType()
+        ))
+        .toList();
 }
 }
