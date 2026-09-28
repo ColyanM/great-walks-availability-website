@@ -19,15 +19,21 @@ public class Controller {
 private final AlertRepository alertRepository;
 private final WalkRepository walkRepository;
 private final FacilityRepository facilityRepository;
+private final ItineraryRepository itineraryRepository;
+private final ItineraryStopRepository itineraryStopRepository;
 
 public Controller(
     AlertRepository alertRepository,
     WalkRepository walkRepository,
-    FacilityRepository facilityRepository
+    FacilityRepository facilityRepository,
+    ItineraryRepository itineraryRepository,
+    ItineraryStopRepository itineraryStopRepository
 ) {
     this.alertRepository = alertRepository;
     this.walkRepository = walkRepository;
     this.facilityRepository = facilityRepository;
+    this.itineraryRepository = itineraryRepository;
+    this.itineraryStopRepository = itineraryStopRepository;
 }
 
 
@@ -117,5 +123,37 @@ public List<FacilityResponse> facilities(@PathVariable int walkId) {
             facility.getFacilityType()
         ))
         .toList();
+}
+
+@GetMapping("/api/itineraries/{id}")
+public ItineraryResponse itinerary(@PathVariable int id) {
+    Itinerary itinerary = itineraryRepository.findById(id)
+        .orElseThrow(() -> new ResponseStatusException(
+            HttpStatus.NOT_FOUND,
+            "Itinerary not found."
+        ));
+
+    List<ItineraryStopResponse> stops = itineraryStopRepository
+        .findByItinerary_IdOrderByNightOffsetAsc(id)
+        .stream()
+        .map(stop -> {
+            Facility facility = stop.getFacility();
+
+            return new ItineraryStopResponse(
+                stop.getNightOffset(),
+                new FacilityResponse(
+                    facility.getId(),
+                    facility.getName(),
+                    facility.getFacilityType()
+                )
+            );
+        })
+        .toList();
+
+    return new ItineraryResponse(
+        itinerary.getId(),
+        itinerary.getName(),
+        stops
+    );
 }
 }
