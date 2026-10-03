@@ -15,6 +15,13 @@ public class Walk {
     @Column(nullable = false, unique = true, length = 100)
     private String name;
 
+    @Column(name = "doc_place_id")
+    private Integer docPlaceId;
+
+    public Integer getDocPlaceId() {
+        return docPlaceId;
+    }
+
     protected Walk() {
     }
 

@@ -5,6 +5,11 @@ import java.util.List;
 public record ItineraryResponse(
     int id,
     String name,
-    List<ItineraryStopResponse> stops
+    List<Stop> stops
 ) {
+    public record Stop(
+        int nightOffset,
+        FacilityResponse facility
+    ) {
+    }
 }

@@ -28,6 +28,13 @@ public class Facility {
     @Column(name = "facility_type", nullable = false, length = 20)
     private FacilityType facilityType;
 
+    @Column(name = "doc_facility_id")
+    private Integer docFacilityId;
+
+    public Integer getDocFacilityId() {
+        return docFacilityId;
+    }
+
     protected Facility() {
     }
 
