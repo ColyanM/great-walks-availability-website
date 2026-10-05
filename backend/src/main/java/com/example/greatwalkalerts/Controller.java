@@ -27,12 +27,20 @@ public class Controller {
     public record HealthResponse(String status) {
     }
 
+    public record TripMatchResponse(
+            int itineraryId,
+            LocalDate startDate,
+            int partySize,
+            boolean matches) {
+    }
+
     private final AlertRepository alertRepository;
     private final WalkRepository walkRepository;
     private final FacilityRepository facilityRepository;
     private final ItineraryRepository itineraryRepository;
     private final ItineraryStopRepository itineraryStopRepository;
     private final DocAvailabilityProvider docAvailabilityProvider;
+    private final TripMatcher tripMatcher;
 
     public Controller(
             AlertRepository alertRepository,
@@ -40,13 +48,14 @@ public class Controller {
             FacilityRepository facilityRepository,
             ItineraryRepository itineraryRepository,
             ItineraryStopRepository itineraryStopRepository,
-            DocAvailabilityProvider docAvailabilityProvider) {
+            DocAvailabilityProvider docAvailabilityProvider, TripMatcher tripMatcher) {
         this.alertRepository = alertRepository;
         this.walkRepository = walkRepository;
         this.facilityRepository = facilityRepository;
         this.itineraryRepository = itineraryRepository;
         this.itineraryStopRepository = itineraryStopRepository;
         this.docAvailabilityProvider = docAvailabilityProvider;
+        this.tripMatcher = tripMatcher;
     }
 
     @GetMapping("/api/health")
@@ -208,5 +217,59 @@ public class Controller {
                     "Could not retrieve DOC availability. Try again later.",
                     exception);
         }
+    }
+
+    @GetMapping("/api/itineraries/{id}/check")
+    public TripMatchResponse checkItinerary(
+            @PathVariable int id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam int partySize) {
+
+        if (partySize < 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Party size must be positive.");
+        }
+
+        Itinerary itinerary = itineraryRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Itinerary not found."));
+
+        List<ItineraryStop> stops = itineraryStopRepository
+                .findByItinerary_IdOrderByNightOffsetAsc(id);
+
+        if (stops.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This itinerary has no overnight stops.");
+        }
+
+        for (ItineraryStop stop : stops) {
+            if (stop.getFacility().getDocFacilityId() == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Availability is not configured for every stop.");
+            }
+        }
+
+        int nights = stops.getLast().getNightOffset() + 1;
+
+        List<AvailabilityResult> results = availability(
+                itinerary.getWalk().getId(),
+                startDate,
+                nights);
+
+        boolean matches = tripMatcher.matches(
+                stops,
+                startDate,
+                partySize,
+                results);
+
+        return new TripMatchResponse(
+                id,
+                startDate,
+                partySize,
+                matches);
     }
 }
