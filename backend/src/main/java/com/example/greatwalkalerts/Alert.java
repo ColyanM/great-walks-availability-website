@@ -29,6 +29,9 @@ public class Alert {
     @Column(name = "itinerary_id")
     private Integer itineraryId;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     protected Alert() {
     }
 
@@ -60,5 +63,13 @@ public class Alert {
 
     public void setItineraryId(Integer itineraryId) {
         this.itineraryId = itineraryId;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 }

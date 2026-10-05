@@ -1,0 +1,6 @@
+ALTER TABLE alerts
+    ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;
+
+UPDATE alerts
+SET active = FALSE
+WHERE itinerary_id IS NULL;
