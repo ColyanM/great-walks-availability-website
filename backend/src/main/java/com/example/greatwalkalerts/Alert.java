@@ -26,6 +26,9 @@ public class Alert {
     @Column(name = "party_size", nullable = false)
     private int partySize;
 
+    @Column(name = "itinerary_id")
+    private Integer itineraryId;
+
     protected Alert() {
     }
 
@@ -40,14 +43,22 @@ public class Alert {
     }
 
     public int getWalkId() {
-    return walkId;
-}
+        return walkId;
+    }
 
-public LocalDate getStartDate() {
-    return startDate;
-}
+    public LocalDate getStartDate() {
+        return startDate;
+    }
 
-public int getPartySize() {
-    return partySize;
-}
+    public int getPartySize() {
+        return partySize;
+    }
+
+    public Integer getItineraryId() {
+        return itineraryId;
+    }
+
+    public void setItineraryId(Integer itineraryId) {
+        this.itineraryId = itineraryId;
+    }
 }

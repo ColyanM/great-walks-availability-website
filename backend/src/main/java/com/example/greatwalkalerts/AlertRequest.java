@@ -7,8 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 public record AlertRequest(
-    @Positive int walkId,
-    @NotNull @FutureOrPresent LocalDate startDate,
-    @Positive int partySize
-) {
+        @Positive int walkId,
+        @NotNull @Positive Integer itineraryId,
+        @NotNull @FutureOrPresent LocalDate startDate,
+        @Positive int partySize) {
 }

@@ -80,6 +80,7 @@ public class Controller {
                 .map(alert -> new AlertResponse(
                         alert.getId(),
                         alert.getWalkId(),
+                        alert.getItineraryId(),
                         alert.getStartDate(),
                         alert.getPartySize()))
                 .toList();
@@ -96,16 +97,31 @@ public class Controller {
                     "Please choose a valid walk.");
         }
 
+        Itinerary itinerary = itineraryRepository
+                .findById(request.itineraryId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Please choose a valid itinerary."));
+
+        if (itinerary.getWalk().getId() != request.walkId()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "The itinerary must belong to the selected walk.");
+        }
+
         Alert alert = new Alert(
                 request.walkId(),
                 request.startDate(),
                 request.partySize());
+
+        alert.setItineraryId(itinerary.getId());
 
         Alert savedAlert = alertRepository.save(alert);
 
         return new AlertResponse(
                 savedAlert.getId(),
                 savedAlert.getWalkId(),
+                savedAlert.getItineraryId(),
                 savedAlert.getStartDate(),
                 savedAlert.getPartySize());
     }
@@ -271,5 +287,24 @@ public class Controller {
                 startDate,
                 partySize,
                 matches);
+    }
+
+    @GetMapping("/api/alerts/{id}/check")
+    public TripMatchResponse checkAlert(@PathVariable int id) {
+        Alert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Alert not found."));
+
+        if (alert.getItineraryId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This alert needs an itinerary before it can be checked.");
+        }
+
+        return checkItinerary(
+                alert.getItineraryId(),
+                alert.getStartDate(),
+                alert.getPartySize());
     }
 }
