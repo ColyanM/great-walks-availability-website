@@ -18,6 +18,9 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.client.RestClientException;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @RestController
 public class Controller {
 
@@ -155,7 +158,7 @@ public class Controller {
     }
 
     @GetMapping("/api/walks/{walkId}/availability")
-    public DocAvailabilityResponse availability(
+    public List<AvailabilityResult> availability(
             @PathVariable int walkId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate arrivalDate,
             @RequestParam(defaultValue = "11") int nights) {
@@ -177,11 +180,28 @@ public class Controller {
                     "Availability is not configured for this walk yet.");
         }
 
+        List<Facility> facilities = facilityRepository.findByWalk_IdOrderByIdAsc(walkId);
+
+        Map<Integer, Integer> localIdsByDocId = new HashMap<>();
+
+        for (Facility facility : facilities) {
+            Integer docFacilityId = facility.getDocFacilityId();
+
+            if (docFacilityId != null) {
+                localIdsByDocId.put(docFacilityId, facility.getId());
+            }
+        }
+
         try {
-            return docAvailabilityProvider.search(
+            DocAvailabilityResponse response = docAvailabilityProvider.search(
                     walk.getDocPlaceId(),
                     arrivalDate,
                     nights);
+
+            return DocAvailabilityProvider.mapAvailability(
+                    response,
+                    localIdsByDocId);
+
         } catch (RestClientException | IllegalStateException exception) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,

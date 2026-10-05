@@ -13,84 +13,149 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 @Component
 public class DocAvailabilityProvider {
 
-    private final RestClient client;
+        private final RestClient client;
 
-    public DocAvailabilityProvider() {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+        public DocAvailabilityProvider() {
+                HttpClient httpClient = HttpClient.newBuilder()
+                                .connectTimeout(Duration.ofSeconds(10))
+                                .build();
 
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+                JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
 
-        requestFactory.setReadTimeout(Duration.ofSeconds(20));
+                requestFactory.setReadTimeout(Duration.ofSeconds(20));
 
-        this.client = RestClient.builder()
-                .baseUrl(
-                        "https://prod-nz-rdr.recreation-management.tylerapp.com")
-                // DOC challenges the default Java client identifier.
-                .defaultHeader(HttpHeaders.USER_AGENT,
-                        "Mozilla/5.0 (compatible; GreatWalkAlerts/0.1)")
-                .requestFactory(requestFactory)
-                .build();
-    }
-
-    public DocAvailabilityResponse search(
-            int docPlaceId, LocalDate arrivalDate, int nights) {
-
-        Objects.requireNonNull(arrivalDate, "Arrival date is required");
-
-        if (docPlaceId <= 0 || nights < 1) {
-            throw new IllegalArgumentException(
-                    "Place ID and nights must be positive");
+                this.client = RestClient.builder()
+                                .baseUrl(
+                                                "https://prod-nz-rdr.recreation-management.tylerapp.com")
+                                // DOC challenges the default Java client identifier.
+                                .defaultHeader(HttpHeaders.USER_AGENT,
+                                                "Mozilla/5.0 (compatible; GreatWalkAlerts/0.1)")
+                                .requestFactory(requestFactory)
+                                .build();
         }
 
-        SearchRequest request = new SearchRequest(
-                "",
-                docPlaceId,
-                0,
-                arrivalDate,
-                nights);
+        public DocAvailabilityResponse search(
+                        int docPlaceId, LocalDate arrivalDate, int nights) {
 
-        DocAvailabilityResponse response = client.post()
-                .uri("/nzrdr/rdr/search/greatwalkplacefacility")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .onStatus(
-                        status -> status.value() != 200,
-                        (requestDetails, responseDetails) -> {
-                            String wafAction = responseDetails.getHeaders()
-                                    .getFirst("x-amzn-waf-action");
+                Objects.requireNonNull(arrivalDate, "Arrival date is required");
 
-                            if ("challenge".equals(wafAction)) {
+                if (docPlaceId <= 0 || nights < 1) {
+                        throw new IllegalArgumentException(
+                                        "Place ID and nights must be positive");
+                }
+
+                SearchRequest request = new SearchRequest(
+                                "",
+                                docPlaceId,
+                                0,
+                                arrivalDate,
+                                nights);
+
+                DocAvailabilityResponse response = client.post()
+                                .uri("/nzrdr/rdr/search/greatwalkplacefacility")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.APPLICATION_JSON)
+                                .body(request)
+                                .retrieve()
+                                .onStatus(
+                                                status -> status.value() != 200,
+                                                (requestDetails, responseDetails) -> {
+                                                        String wafAction = responseDetails.getHeaders()
+                                                                        .getFirst("x-amzn-waf-action");
+
+                                                        if ("challenge".equals(wafAction)) {
+                                                                throw new IllegalStateException(
+                                                                                "DOC requested browser verification; "
+                                                                                                + "availability could not be retrieved");
+                                                        }
+
+                                                        throw new IllegalStateException(
+                                                                        "Unexpected DOC response: "
+                                                                                        + responseDetails
+                                                                                                        .getStatusCode());
+                                                })
+                                .body(DocAvailabilityResponse.class);
+
+                if (response == null || response.facilities() == null) {
+                        throw new IllegalStateException(
+                                        "DOC returned a response without facility data");
+                }
+
+                return response;
+        }
+
+        static List<AvailabilityResult> mapAvailability(DocAvailabilityResponse response,
+                        Map<Integer, Integer> localIdsByDocId) {
+
+                Objects.requireNonNull(
+                                localIdsByDocId,
+                                "Facility ID mapping is required");
+
+                if (response == null || response.facilities() == null) {
+                        throw new IllegalStateException(
+                                        "DOC returned a response without facility data");
+                }
+
+                List<AvailabilityResult> results = new ArrayList<>();
+
+                for (DocAvailabilityResponse.FacilityData facility : response.facilities()) {
+
+                        if (facility == null || facility.facilityId() == null) {
                                 throw new IllegalStateException(
-                                        "DOC requested browser verification; "
-                                                + "availability could not be retrieved");
-                            }
+                                                "DOC returned a facility without an ID");
+                        }
 
-                            throw new IllegalStateException(
-                                    "Unexpected DOC response: "
-                                            + responseDetails.getStatusCode());
-                        })
-                .body(DocAvailabilityResponse.class);
+                        Integer localFacilityId = localIdsByDocId.get(facility.facilityId());
 
-        if (response == null || response.facilities() == null) {
-            throw new IllegalStateException(
-                    "DOC returned a response without facility data");
+                        if (localFacilityId == null) {
+                                continue;
+                        }
+
+                        if (facility.availableForPatron() == null
+                                        || facility.dates() == null) {
+                                throw new IllegalStateException(
+                                                "DOC returned incomplete facility data");
+                        }
+
+                        for (DocAvailabilityResponse.DateData day : facility.dates()) {
+
+                                if (day == null
+                                                || day.arrivalDate() == null
+                                                || day.totalAvailable() == null
+                                                || day.totalAvailable() < 0
+                                                || day.seasonAvailable() == null
+                                                || day.available() == null) {
+                                        throw new IllegalStateException(
+                                                        "DOC returned invalid availability date data");
+                                }
+
+                                if (facility.availableForPatron()
+                                                && day.seasonAvailable()
+                                                && day.available()) {
+
+                                        results.add(new AvailabilityResult(
+                                                        localFacilityId,
+                                                        day.arrivalDate().toLocalDate(),
+                                                        day.totalAvailable()));
+                                }
+                        }
+                }
+
+                return results;
         }
 
-        return response;
-    }
-
-    private record SearchRequest(
-            @JsonProperty("accomodation") String accommodation,
-            int placeId,
-            int customerClassificationId,
-            LocalDate arrivalDate,
-            int nights) {
-    }
+        private record SearchRequest(
+                        @JsonProperty("accomodation") String accommodation,
+                        int placeId,
+                        int customerClassificationId,
+                        LocalDate arrivalDate,
+                        int nights) {
+        }
 }
