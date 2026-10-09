@@ -16,10 +16,6 @@ import java.time.LocalDate;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.client.RestClientException;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import org.springframework.web.bind.annotation.PatchMapping;
 
@@ -41,23 +37,20 @@ public class Controller {
         private final FacilityRepository facilityRepository;
         private final ItineraryRepository itineraryRepository;
         private final ItineraryStopRepository itineraryStopRepository;
-        private final DocAvailabilityProvider docAvailabilityProvider;
-        private final TripMatcher tripMatcher;
+        private final AvailabilityService availabilityService;
 
-        public Controller(
-                        AlertRepository alertRepository,
+        public Controller(AlertRepository alertRepository,
                         WalkRepository walkRepository,
                         FacilityRepository facilityRepository,
                         ItineraryRepository itineraryRepository,
                         ItineraryStopRepository itineraryStopRepository,
-                        DocAvailabilityProvider docAvailabilityProvider, TripMatcher tripMatcher) {
+                        AvailabilityService availabilityService) {
                 this.alertRepository = alertRepository;
                 this.walkRepository = walkRepository;
                 this.facilityRepository = facilityRepository;
                 this.itineraryRepository = itineraryRepository;
                 this.itineraryStopRepository = itineraryStopRepository;
-                this.docAvailabilityProvider = docAvailabilityProvider;
-                this.tripMatcher = tripMatcher;
+                this.availabilityService = availabilityService;
         }
 
         @GetMapping("/api/health")
@@ -79,13 +72,7 @@ public class Controller {
         public List<AlertResponse> alerts() {
                 return alertRepository.findAll(Sort.by("id").descending())
                                 .stream()
-                                .map(alert -> new AlertResponse(
-                                                alert.getId(),
-                                                alert.getWalkId(),
-                                                alert.getItineraryId(),
-                                                alert.getStartDate(),
-                                                alert.getPartySize(),
-                                                alert.isActive()))
+                                .map(this::toAlertResponse)
                                 .toList();
         }
 
@@ -121,13 +108,7 @@ public class Controller {
 
                 Alert savedAlert = alertRepository.save(alert);
 
-                return new AlertResponse(
-                                savedAlert.getId(),
-                                savedAlert.getWalkId(),
-                                savedAlert.getItineraryId(),
-                                savedAlert.getStartDate(),
-                                savedAlert.getPartySize(),
-                                savedAlert.isActive());
+                return toAlertResponse(savedAlert);
         }
 
         @DeleteMapping("/api/alerts/{id}")
@@ -192,51 +173,7 @@ public class Controller {
                         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate arrivalDate,
                         @RequestParam(defaultValue = "11") int nights) {
 
-                if (nights < 1 || nights > 11) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST,
-                                        "Nights must be between 1 and 11.");
-                }
-
-                Walk walk = walkRepository.findById(walkId)
-                                .orElseThrow(() -> new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND,
-                                                "Walk not found."));
-
-                if (walk.getDocPlaceId() == null) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST,
-                                        "Availability is not configured for this walk yet.");
-                }
-
-                List<Facility> facilities = facilityRepository.findByWalk_IdOrderByIdAsc(walkId);
-
-                Map<Integer, Integer> localIdsByDocId = new HashMap<>();
-
-                for (Facility facility : facilities) {
-                        Integer docFacilityId = facility.getDocFacilityId();
-
-                        if (docFacilityId != null) {
-                                localIdsByDocId.put(docFacilityId, facility.getId());
-                        }
-                }
-
-                try {
-                        DocAvailabilityResponse response = docAvailabilityProvider.search(
-                                        walk.getDocPlaceId(),
-                                        arrivalDate,
-                                        nights);
-
-                        return DocAvailabilityProvider.mapAvailability(
-                                        response,
-                                        localIdsByDocId);
-
-                } catch (RestClientException | IllegalStateException exception) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.BAD_GATEWAY,
-                                        "Could not retrieve DOC availability. Try again later.",
-                                        exception);
-                }
+                return availabilityService.search(walkId, arrivalDate, nights);
         }
 
         @GetMapping("/api/itineraries/{id}/check")
@@ -245,46 +182,10 @@ public class Controller {
                         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
                         @RequestParam int partySize) {
 
-                if (partySize < 1) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST,
-                                        "Party size must be positive.");
-                }
-
-                Itinerary itinerary = itineraryRepository.findById(id)
-                                .orElseThrow(() -> new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND,
-                                                "Itinerary not found."));
-
-                List<ItineraryStop> stops = itineraryStopRepository
-                                .findByItinerary_IdOrderByNightOffsetAsc(id);
-
-                if (stops.isEmpty()) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST,
-                                        "This itinerary has no overnight stops.");
-                }
-
-                for (ItineraryStop stop : stops) {
-                        if (stop.getFacility().getDocFacilityId() == null) {
-                                throw new ResponseStatusException(
-                                                HttpStatus.BAD_REQUEST,
-                                                "Availability is not configured for every stop.");
-                        }
-                }
-
-                int nights = stops.getLast().getNightOffset() + 1;
-
-                List<AvailabilityResult> results = availability(
-                                itinerary.getWalk().getId(),
+                boolean matches = availabilityService.checkItinerary(
+                                id,
                                 startDate,
-                                nights);
-
-                boolean matches = tripMatcher.matches(
-                                stops,
-                                startDate,
-                                partySize,
-                                results);
+                                partySize);
 
                 return new TripMatchResponse(
                                 id,
@@ -306,10 +207,16 @@ public class Controller {
                                         "This alert needs an itinerary before it can be checked.");
                 }
 
-                return checkItinerary(
+                boolean matches = availabilityService.checkItinerary(
                                 alert.getItineraryId(),
                                 alert.getStartDate(),
                                 alert.getPartySize());
+
+                return new TripMatchResponse(
+                                alert.getItineraryId(),
+                                alert.getStartDate(),
+                                alert.getPartySize(),
+                                matches);
         }
 
         @PatchMapping("/api/alerts/{id}/status")
@@ -332,12 +239,21 @@ public class Controller {
 
                 Alert savedAlert = alertRepository.save(alert);
 
+                return toAlertResponse(savedAlert);
+        }
+
+        @PostMapping("/api/alerts/check-active")
+        public List<AvailabilityService.AlertCheckResult> checkActiveAlerts() {
+                return availabilityService.checkActiveAlerts();
+        }
+
+        private AlertResponse toAlertResponse(Alert alert) {
                 return new AlertResponse(
-                                savedAlert.getId(),
-                                savedAlert.getWalkId(),
-                                savedAlert.getItineraryId(),
-                                savedAlert.getStartDate(),
-                                savedAlert.getPartySize(),
-                                savedAlert.isActive());
+                                alert.getId(),
+                                alert.getWalkId(),
+                                alert.getItineraryId(),
+                                alert.getStartDate(),
+                                alert.getPartySize(),
+                                alert.isActive());
         }
 }
